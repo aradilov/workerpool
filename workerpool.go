@@ -63,6 +63,8 @@ type WorkerPool struct {
 	freeQ  *ringbuffer.MPMC[int] // available indices for creating workers
 
 	workers []workerSlot
+
+	timers timerPool
 }
 
 type workerSlot struct {
@@ -148,7 +150,7 @@ func (wp *WorkerPool) Stop() {
 
 // Do schedules the given callback function `cb` to be executed by a worker within the specified deadline duration.
 // Returns an error if no workers are available or if the deadline expires before the task is completed.
-func (wp *WorkerPool) Do(cb func(), deadline time.Duration) error {
+func (wp *WorkerPool) Do(cb func(), timeout time.Duration) error {
 	wp.submitted.Add(1)
 
 	slot := wp.getSlot()
@@ -163,8 +165,8 @@ func (wp *WorkerPool) Do(cb func(), deadline time.Duration) error {
 	task.status.Store(StatusQueued)
 	slot.ch <- task
 
-	timer := time.NewTimer(deadline)
-	defer timer.Stop()
+	timer := wp.timers.Get(timeout)
+	defer wp.timers.Put(timer)
 
 	select {
 	case err := <-task.done:
