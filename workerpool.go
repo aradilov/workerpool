@@ -37,6 +37,7 @@ type Stats struct {
 	NoFreeWorkers uint64
 	ReleaseFailed uint64
 	FreeQFailed   uint64
+	Timeout       uint64
 }
 
 // WorkerPool is a concurrent worker pool that efficiently handles tasks using a bounded number of workers.
@@ -51,6 +52,7 @@ type WorkerPool struct {
 	noFreeWorkers atomic.Uint64
 	releaseFailed atomic.Uint64
 	freeQFailed   atomic.Uint64
+	timeout       atomic.Uint64
 
 	stopCh   chan struct{}
 	mustStop atomic.Bool
@@ -87,6 +89,7 @@ func (wp *WorkerPool) Stats() Stats {
 		NoFreeWorkers: wp.noFreeWorkers.Load(),
 		ReleaseFailed: wp.releaseFailed.Load(),
 		FreeQFailed:   wp.freeQFailed.Load(),
+		Timeout:       wp.timeout.Load(),
 	}
 }
 
@@ -185,7 +188,7 @@ func (wp *WorkerPool) Do(cb func(), timeout time.Duration) error {
 
 		return err
 	case <-timer.C:
-
+		wp.timeout.Add(1)
 	slowpath:
 		st := task.status.Load()
 		switch st {

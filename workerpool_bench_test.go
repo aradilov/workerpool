@@ -7,20 +7,20 @@ import (
 	"time"
 )
 
-func nextPow2(n int) int {
-
-	if n <= 1 {
-		return 1
-	}
-	n--
-	n |= n >> 1
-	n |= n >> 2
-	n |= n >> 4
-	n |= n >> 8
-	n |= n >> 16
-
-	n++
-	return n
+func capacity(n int) int {
+	return 1 << 12
+	//if n <= 1 {
+	//	return 1
+	//}
+	//n--
+	//n |= n >> 1
+	//n |= n >> 2
+	//n |= n >> 4
+	//n |= n >> 8
+	//n |= n >> 16
+	//
+	//n++
+	//return n
 }
 
 func newBenchPool(maxWorkers int, wf func(cb func()) error) *WorkerPool {
@@ -35,7 +35,7 @@ func newBenchPool(maxWorkers int, wf func(cb func()) error) *WorkerPool {
 }
 
 func BenchmarkServe_NoWait_Parallel(b *testing.B) {
-	max := nextPow2(runtime.GOMAXPROCS(0) * 2)
+	max := capacity(runtime.GOMAXPROCS(0) * 2)
 
 	wp := newBenchPool(max, func(cb func()) error {
 		cb()
@@ -54,11 +54,13 @@ func BenchmarkServe_NoWait_Parallel(b *testing.B) {
 			_ = wp.Serve(cb)
 		}
 	})
+
 	_ = sink.Load()
+	b.Logf("b.N = %d, stats=%+v", b.N, wp.Stats())
 }
 
 func BenchmarkServe_NoWait_Serial(b *testing.B) {
-	max := nextPow2(runtime.GOMAXPROCS(0) * 2)
+	max := capacity(runtime.GOMAXPROCS(0) * 2)
 
 	wp := newBenchPool(max, func(cb func()) error {
 		cb()
@@ -73,11 +75,13 @@ func BenchmarkServe_NoWait_Serial(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = wp.Serve(cb)
 	}
+
 	_ = sink.Load()
+	b.Logf("b.N = %d, stats=%+v", b.N, wp.Stats())
 }
 
 func BenchmarkDo_Wait_Parallel(b *testing.B) {
-	max := nextPow2(runtime.GOMAXPROCS(0) * 2)
+	max := capacity(runtime.GOMAXPROCS(0) * 2)
 
 	wp := newBenchPool(max, func(cb func()) error {
 		cb()
@@ -85,7 +89,7 @@ func BenchmarkDo_Wait_Parallel(b *testing.B) {
 	})
 	defer wp.Stop()
 
-	var sink, noFreeWorkers, timeout atomic.Uint64
+	var sink atomic.Uint64
 	cb := func() { sink.Add(1) }
 
 	deadline := 2 * time.Second
@@ -93,21 +97,15 @@ func BenchmarkDo_Wait_Parallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			switch wp.Do(cb, deadline) {
-			case ErrNoFreeWorkers:
-				noFreeWorkers.Add(1)
-			case ErrTimeout:
-				timeout.Add(1)
-			}
+			_ = wp.Do(cb, deadline)
 		}
 	})
-	_ = sink.Load()
-	//res := sink.Load()
-	//b.Logf("sink.Load()=%d for %d, noFreeWorkers %d, timeout = %d", res, b.N, noFreeWorkers.Load(), timeout.Load())
+
+	b.Logf("sink.Load()=%d for %d, stats=%+v", sink.Load(), b.N, wp.Stats())
 }
 
 func BenchmarkDo_Wait_Serial(b *testing.B) {
-	max := nextPow2(runtime.GOMAXPROCS(0) * 2)
+	max := capacity(runtime.GOMAXPROCS(0) * 2)
 
 	wp := newBenchPool(max, func(cb func()) error {
 		cb()
@@ -124,11 +122,12 @@ func BenchmarkDo_Wait_Serial(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = wp.Do(cb, deadline)
 	}
-	_ = sink.Load()
+
+	b.Logf("sink.Load()=%d for %d, stats=%+v", sink.Load(), b.N, wp.Stats())
 }
 
 func BenchmarkMixed_90Serve_10Do_Parallel(b *testing.B) {
-	max := nextPow2(runtime.GOMAXPROCS(0) * 2)
+	max := capacity(runtime.GOMAXPROCS(0) * 2)
 
 	wp := newBenchPool(max, func(cb func()) error {
 		cb()
@@ -153,5 +152,6 @@ func BenchmarkMixed_90Serve_10Do_Parallel(b *testing.B) {
 			}
 		}
 	})
-	_ = sink.Load()
+
+	b.Logf("sink.Load()=%d for %d, stats=%+v", sink.Load(), b.N, wp.Stats())
 }
